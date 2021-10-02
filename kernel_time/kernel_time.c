@@ -9,7 +9,7 @@
 MODULE_AUTHOR("Victor Cora Colombo");
 MODULE_LICENSE("GPL");
 
-#define MODULE_NAME "get_kernel_time"
+#define MODULE_NAME "kernel_time"
 #define MODULE_LOG_START MODULE_NAME ": "
 
 static struct cdev cdev;
@@ -17,22 +17,22 @@ static struct class *cl;
 
 dev_t devno;
 
-static struct file_operations get_kernel_time_fops = {
+static struct file_operations kernel_time_fops = {
     .owner = THIS_MODULE,
 };
 
-static int get_kernel_time_setup_device(void)
+static int kernel_time_setup_device(void)
 {
     int err;
 
-    cdev_init(&cdev, &get_kernel_time_fops);
+    cdev_init(&cdev, &kernel_time_fops);
     cdev.owner = THIS_MODULE;
     err = cdev_add(&cdev, devno, 1);
 
     return err;
 }
 
-static int __init get_kernel_time_init(void)
+static int __init kernel_time_init(void)
 {
     int err;
     struct device *dev_ret;
@@ -56,7 +56,7 @@ static int __init get_kernel_time_init(void)
         goto class_destroy;
     }
 
-    err = get_kernel_time_setup_device();
+    err = kernel_time_setup_device();
     if (unlikely(err < 0))
     {
         printk(KERN_ERR MODULE_LOG_START "unable to setup device\n");
@@ -78,7 +78,7 @@ out:
     return err;
 }
 
-static void __exit get_kernel_time_exit(void)
+static void __exit kernel_time_exit(void)
 {
     cdev_del(&cdev);
     device_destroy(cl, devno);
@@ -88,5 +88,5 @@ static void __exit get_kernel_time_exit(void)
     printk(KERN_INFO MODULE_LOG_START "unregistered");
 }
 
-module_init(get_kernel_time_init);
-module_exit(get_kernel_time_exit);
+module_init(kernel_time_init);
+module_exit(kernel_time_exit);
