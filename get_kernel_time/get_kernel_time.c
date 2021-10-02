@@ -1,5 +1,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/device.h>
 #include <linux/kdev_t.h> // MAJOR, MKDEV
 #include <linux/fs.h>     // register_chrdev_region, alloc_chrdev_region
 #include <linux/cdev.h>   // cdev
@@ -11,11 +12,10 @@ MODULE_LICENSE("GPL");
 #define MODULE_NAME "get_kernel_time"
 #define MODULE_LOG_START MODULE_NAME ": "
 
-int get_kernel_time_major = 0;
-int get_kernel_time_minor = 0;
-
 static struct cdev cdev;
 static struct class *cl;
+
+dev_t devno;
 
 static struct file_operations get_kernel_time_fops = {
     .owner = THIS_MODULE,
@@ -24,7 +24,6 @@ static struct file_operations get_kernel_time_fops = {
 static int get_kernel_time_setup_device(void)
 {
     int err;
-    dev_t devno = MKDEV(get_kernel_time_major, get_kernel_time_minor);
 
     cdev_init(&cdev, &get_kernel_time_fops);
     cdev.owner = THIS_MODULE;
@@ -36,16 +35,14 @@ static int get_kernel_time_setup_device(void)
 static int __init get_kernel_time_init(void)
 {
     int err;
-    dev_t devno;
     struct device *dev_ret;
 
-    err = alloc_chrdev_region(&devno, get_kernel_time_minor, 1, MODULE_NAME);
+    err = alloc_chrdev_region(&devno, 0, 1, MODULE_NAME);
     if (unlikely(err < 0))
     {
         printk(KERN_ERR MODULE_LOG_START "unable to alloc major number\n");
         goto out;
     }
-    get_kernel_time_major = MAJOR(devno);
 
     if (IS_ERR(cl = class_create(THIS_MODULE, "chardrv")))
     {
@@ -67,7 +64,9 @@ static int __init get_kernel_time_init(void)
     }
 
     printk(KERN_INFO MODULE_LOG_START "registered with major %d and minor %d\n",
-           get_kernel_time_major, get_kernel_time_minor);
+           MAJOR(devno), MINOR(devno));
+
+    return 0;
 
 device_destroy:
     device_destroy(cl, devno);
@@ -79,15 +78,14 @@ out:
     return err;
 }
 
-static void __init get_kernel_time_exit(void)
+static void __exit get_kernel_time_exit(void)
 {
-    dev_t devno = MKDEV(get_kernel_time_major, get_kernel_time_minor);
     cdev_del(&cdev);
     device_destroy(cl, devno);
     class_destroy(cl);
     unregister_chrdev_region(devno, 1);
 
-    printk(KERN_INFO MODULE_LOG_START "unregisted");
+    printk(KERN_INFO MODULE_LOG_START "unregistered");
 }
 
 module_init(get_kernel_time_init);
