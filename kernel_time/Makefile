@@ -1,7 +1,7 @@
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-obj-m	:= get_kernel_time.o
+obj-m	:= kernel_time.o
 
 else
 
