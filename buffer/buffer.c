@@ -15,34 +15,56 @@ MODULE_LICENSE("GPL");
 #define MODULE_NAME "buffer"
 #define MODULE_LOG_START MODULE_NAME ": "
 
-static struct cdev cdev;
 static struct class *cl;
 static dev_t devno;
 
+struct buffer_dev {
+	struct cdev cdev;
+};
+
+struct buffer_dev *dev;
+
+ssize_t buffer_read(struct file *filp, char __user *buf, size_t count,
+		    loff_t *off)
+{
+	return 0;
+}
+
+int buffer_release(struct inode *inode, struct file *filp) { return 0; }
+
 static struct file_operations buffer_fops = {
     .owner = THIS_MODULE,
+    .read = buffer_read,
+    .release = buffer_release,
 };
 
 static int buffer_setup_device(void)
 {
 	int err;
 
-	err = alloc_chrdev_region(&devno, 0, 1, MODULE_NAME);
-	if (unlikely(err < 0)) {
+	dev =
+	    (struct buffer_dev *)kzalloc(sizeof(struct buffer_dev), GFP_KERNEL);
+	if (unlikely(!dev)) {
+		err = -ENOMEM;
 		goto out;
 	}
 
-	cdev_init(&cdev, &buffer_fops);
-	cdev.owner = THIS_MODULE;
-	err = cdev_add(&cdev, devno, 1);
-	if (unlikely(err < 0)) {
-		goto out;
-	}
-
-	return 0;
+	cdev_init(&dev->cdev, &buffer_fops);
+	dev->cdev.owner = THIS_MODULE;
+	err = cdev_add(&dev->cdev, devno, 1);
 
 out:
 	return err;
+}
+
+static void buffer_cleanup(void)
+{
+	if (dev) {
+		cdev_del(&dev->cdev);
+		kfree(dev);
+	}
+
+	unregister_chrdev_region(devno, 1);
 }
 
 static int __init buffer_init(void)
@@ -50,19 +72,22 @@ static int __init buffer_init(void)
 	int err;
 	struct device *dev_ret;
 
+	err = alloc_chrdev_region(&devno, 0, 1, MODULE_NAME);
+	if (unlikely(err < 0)) {
+		pr_err(MODULE_LOG_START "unable to alloc major number\n");
+		goto fail;
+	}
+
 	err = buffer_setup_device();
 	if (unlikely(err < 0)) {
 		pr_err(MODULE_LOG_START "unable to setup device\n");
-		goto out;
+		goto dev_cleanup;
 	}
-
-	pr_info(MODULE_LOG_START "registered with major %d and minor %d\n",
-		MAJOR(devno), MINOR(devno));
 
 	cl = class_create(THIS_MODULE, MODULE_NAME);
 	if (IS_ERR(cl)) {
 		err = PTR_ERR(cl);
-		goto unregister_chrdev;
+		goto dev_cleanup;
 	}
 
 	dev_ret = device_create(cl, NULL, devno, NULL, MODULE_NAME);
@@ -71,22 +96,24 @@ static int __init buffer_init(void)
 		goto class_destroy;
 	}
 
+	pr_info(MODULE_LOG_START "registered with major %d and minor %d\n",
+		MAJOR(devno), MINOR(devno));
+
 	return 0;
 
 class_destroy:
 	class_destroy(cl);
-unregister_chrdev:
-	unregister_chrdev_region(devno, 1);
-out:
+dev_cleanup:
+	buffer_cleanup();
+fail:
 	return err;
 }
 
 static void __exit buffer_exit(void)
 {
-	cdev_del(&cdev);
 	device_destroy(cl, devno);
 	class_destroy(cl);
-	unregister_chrdev_region(devno, 1);
+	buffer_cleanup();
 
 	pr_info(MODULE_LOG_START "unregistered");
 }
