@@ -5,7 +5,6 @@
 #include <linux/kdev_t.h> // MAJOR, MKDEV
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/rtc.h>
 #include <linux/slab.h>
 #include <linux/types.h> // dev_t
 
@@ -15,18 +14,74 @@ MODULE_LICENSE("GPL");
 #define MODULE_NAME "buffer"
 #define MODULE_LOG_START MODULE_NAME ": "
 
+#define MAX_CHUNK_SIZE 4096
+
 static struct class *cl;
 static dev_t devno;
 
+// I could have used the kernel list here,
+// but I prefered a simpler implementation
+struct buffer_data {
+	char *chunk;
+	struct buffer_data *next;
+};
+
 struct buffer_dev {
+	struct buffer_data *data_head;
+	struct buffer_data *data_tail;
 	struct cdev cdev;
 };
 
 struct buffer_dev *dev;
 
-ssize_t buffer_read(struct file *filp, char __user *buf, size_t count,
-		    loff_t *off)
+static void clean_data(void)
 {
+	struct buffer_data *prev;
+	while (dev->data_head) {
+		prev = dev->data_head;
+		dev->data_head = dev->data_head->next;
+
+		if (prev->chunk)
+			kfree(prev->chunk);
+		kfree(prev);
+	}
+}
+
+ssize_t buffer_write(struct file *filp, const char __user *buf, size_t count,
+		     loff_t *off)
+{
+	long long int zero = 0;
+
+	if (count > MAX_CHUNK_SIZE) {
+		count = MAX_CHUNK_SIZE;
+	}
+
+	dev->data_tail->chunk = kzalloc(count, GFP_KERNEL);
+	if (!dev->data_tail->chunk) {
+		return -ENOMEM;
+	}
+
+	count = simple_write_to_buffer(dev->data_tail->chunk, count, &zero, buf,
+				       count);
+
+	dev->data_tail->next = kzalloc(sizeof(struct buffer_data), GFP_KERNEL);
+	dev->data_tail = dev->data_tail->next;
+
+	*off += count;
+	return count;
+}
+
+int buffer_open(struct inode *inode, struct file *filp)
+{
+	if ((filp->f_flags & O_ACCMODE) == O_WRONLY) {
+		clean_data();
+
+		// initialize the list
+		dev->data_head =
+		    kzalloc(sizeof(struct buffer_data), GFP_KERNEL);
+		dev->data_tail = dev->data_head;
+	}
+
 	return 0;
 }
 
@@ -34,7 +89,8 @@ int buffer_release(struct inode *inode, struct file *filp) { return 0; }
 
 static struct file_operations buffer_fops = {
     .owner = THIS_MODULE,
-    .read = buffer_read,
+    .write = buffer_write,
+    .open = buffer_open,
     .release = buffer_release,
 };
 
@@ -42,8 +98,7 @@ static int buffer_setup_device(void)
 {
 	int err;
 
-	dev =
-	    (struct buffer_dev *)kzalloc(sizeof(struct buffer_dev), GFP_KERNEL);
+	dev = kzalloc(sizeof(struct buffer_dev), GFP_KERNEL);
 	if (unlikely(!dev)) {
 		err = -ENOMEM;
 		goto out;
@@ -61,6 +116,7 @@ static void buffer_cleanup(void)
 {
 	if (dev) {
 		cdev_del(&dev->cdev);
+		clean_data();
 		kfree(dev);
 	}
 
