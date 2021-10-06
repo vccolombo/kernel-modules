@@ -56,7 +56,7 @@ ssize_t buffer_write(struct file *filp, const char __user *buf, size_t count,
 		count = MAX_CHUNK_SIZE;
 	}
 
-	dev->data_tail->chunk = kzalloc(count, GFP_KERNEL);
+	dev->data_tail->chunk = kmalloc(count + 1, GFP_KERNEL);
 	if (!dev->data_tail->chunk) {
 		return -ENOMEM;
 	}
