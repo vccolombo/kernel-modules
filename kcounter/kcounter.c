@@ -42,17 +42,16 @@ ssize_t counter_read(struct file *filp, char __user *buf, size_t count,
 		     loff_t *off)
 {
 	size_t read = 0;
-	long counter;
+	long cnt;
 
 	if (*off == sizeof(dev->counter))
 		return 0;
 
 	mutex_lock(&dev->counter_mtx);
-	counter = dev->counter;
+	cnt = dev->counter;
 	mutex_unlock(&dev->counter_mtx);
 
-	read += simple_read_from_buffer(buf, count, off, (const void *)&counter,
-					sizeof(dev->counter));
+	read = simple_read_from_buffer(buf, count, off, &cnt, sizeof(cnt));
 
 	pr_debug(MODULE_LOG_START "read %ld bytes\n", read);
 
