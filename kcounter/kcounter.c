@@ -29,9 +29,15 @@ static struct counter_dev *dev;
 ssize_t counter_write(struct file *filp, const char __user *buf, size_t count,
 		      loff_t *off)
 {
-	mutex_lock(&dev->counter_mtx);
+	int err;
+
+	err = mutex_lock_interruptible(&dev->counter_mtx);
+	if (err)
+		return err;
+
 	dev->counter += count;
 	pr_debug(MODULE_LOG_START "counter is now %ld\n", dev->counter);
+
 	mutex_unlock(&dev->counter_mtx);
 
 	*off += count;
@@ -41,14 +47,19 @@ ssize_t counter_write(struct file *filp, const char __user *buf, size_t count,
 ssize_t counter_read(struct file *filp, char __user *buf, size_t count,
 		     loff_t *off)
 {
-	size_t read = 0;
+	int err;
 	long cnt;
+	size_t read = 0;
 
 	if (*off == sizeof(dev->counter))
 		return 0;
 
-	mutex_lock(&dev->counter_mtx);
+	err = mutex_lock_interruptible(&dev->counter_mtx);
+	if (err)
+		return err;
+
 	cnt = dev->counter;
+
 	mutex_unlock(&dev->counter_mtx);
 
 	read = simple_read_from_buffer(buf, count, off, &cnt, sizeof(cnt));
