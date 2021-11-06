@@ -22,6 +22,11 @@ MODULE_PARM_DESC(has_locks,
 		 "If 0, this module is an example of race condition. "
 		 "Otherwise, spinlocks garantee its safety");
 
+static int buggy = 0;
+module_param(buggy, int, 0600);
+MODULE_PARM_DESC(buggy, "If 1, cause an error by issuing a blocking call "
+			"within a spinlock critical section");
+
 static struct class *cl;
 static dev_t devno;
 
@@ -40,6 +45,12 @@ static int open_tracker_open(struct inode *inode, struct file *file)
 
 	if (has_locks)
 		spin_lock(&dev->lock);
+
+	// example showing that we can't block while holding a spinlock
+	if (buggy) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(1 * HZ);
+	}
 
 	// this code is purposefully weird to increase the chances of a race
 	// condition to happen when has_lock is 0. This module serves as an
